@@ -2,6 +2,8 @@ import { ROLE_VAL } from "@/constants/smart-contracts";
 import { NoticeboardClient } from "@/contracts/Noticeboard";
 import { NoticeboardGlobalState } from "@/interfaces/contracts/Noticeboard";
 import { UserInfo } from "@/interfaces/contracts/User";
+import { ValidatorAdClient } from "@/contracts/ValidatorAd";
+import { ABIAddressType } from "algosdk";
 import {
   ValidatorAdGlobalState,
   ValSelfDisclosure,
@@ -10,10 +12,13 @@ import {
   ValTermsStakeLimits,
   ValTermsTiming,
   ValTermsWarnings,
+  DelAppList
 } from "@/interfaces/contracts/ValidatorAd";
 import { ValidatorApiBuilder } from "@/utils/api-builder/ValidatorApiBuilder";
 import { AlgorandClient, microAlgos } from "@algorandfoundation/algokit-utils";
+import { Buffer } from "buffer";
 import { TransactionSigner } from "algosdk";
+//import { getAlgodConfigFromViteEnvironment } from "@/utils/config/getAlgoClientConfigs";
 
 export class ValidatorAdApiCall {
   /**
@@ -58,6 +63,88 @@ export class ValidatorAdApiCall {
         sendParams: { fee: microAlgos(txnParams.fee) },
       },
     );
+
+    console.log("APP CREATE")
+
+    try {
+      const valClient = new ValidatorAdClient(
+        {
+          resolveBy: "id",
+          id: res.return!,
+        },
+        algorandClient.client.algod
+      );
+
+      const gs = await valClient.getGlobalState();
+
+      // Add MongoDB creation logic here
+      const termsTime = ValTermsTiming.decodeBytes(gs.t!.asByteArray());
+      const termsPrice = ValTermsPricing.decodeBytes(gs.p!.asByteArray())
+      const termsStake = ValTermsStakeLimits.decodeBytes(gs.s!.asByteArray())
+      const termsReqs = ValTermsGating.decodeBytes(gs.g!.asByteArray());
+      const termsWarn = ValTermsWarnings.decodeBytes(gs.w!.asByteArray());
+      const valInfo = ValSelfDisclosure.decodeBytes(gs.v!.asByteArray());
+      const delAppList = DelAppList.decodeBytes(gs.delAppList!.asByteArray())
+
+
+      await fetch("http://localhost:5050/record", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          "appId": Number(res.return!),
+          "noticeboardAppId": gs.noticeboardAppId!.asNumber(),
+          "termsTime": {
+            "roundsSetup": Number(termsTime.roundsSetup),
+            "roundsDurationMin": Number(termsTime.roundsDurationMin),
+            "roundsDurationMax": Number(termsTime.roundsDurationMax),
+            "roundsConfirm": Number(termsTime.roundsConfirm),
+            "roundMaxEnd": Number(termsTime.roundMaxEnd)
+          },
+          "termsPrice": {
+            "commission": Number(termsPrice.commission),
+            "feeRoundMin": Number(termsPrice.feeRoundMin),
+            "feeRoundVar": Number(termsPrice.feeRoundVar),
+            "feeSetup": Number(termsPrice.feeSetup),
+            "feeAssetId": Number(termsPrice.feeAssetId)
+          },
+          "termsStake": {
+            "stakeMax": Number(termsStake.stakeMax),
+            "stakeGratis": Number(termsStake.stakeGratis),
+          },
+          "termsReqs": {
+            "gatingAsaList": [termsReqs.gatingAsaList[0].map(Number), termsReqs.gatingAsaList[1].map(Number)]
+          },
+          "termsWarn": {
+            "cntWarningMax": Number(termsWarn.cntWarningMax),
+            "roundsWarning": Number(termsWarn.roundsWarning),
+          },
+
+          "valOwner": new ABIAddressType().decode(gs.valOwner!.asByteArray()),
+          "valManager": new ABIAddressType().decode(gs.valManager!.asByteArray()),
+          "valInfo": {
+            "name": valInfo.name,
+            "https": valInfo.https,
+            "countryCode": valInfo.countryCode,
+            "hwCat": Number(valInfo.hwCat),
+            "nodeVersion": valInfo.nodeVersion,
+          },
+          "state": Buffer.from(gs.state!.asByteArray()).toString("base64"),
+          "cntDel": gs.cntDel!.asNumber(),
+          "cntDelMax": gs.cntDelMax!.asNumber(),
+
+          "delAppList": delAppList.map(Number),
+          "tcSha256": Buffer.from(gs.tcSha256!.asByteArray()).toString("base64"),
+          "totalAlgoEarned": gs.totalAlgoEarned!.asNumber(),
+          "totalAlgoFeesGenerated": gs.totalAlgoFeesGenerated!.asNumber(),
+          "cntAsa": gs.cntAsa!.asNumber(),
+        }),
+      });
+    }
+    catch(error) {
+      console.error(error);
+    }
 
     return res;
   }
@@ -166,6 +253,87 @@ export class ValidatorAdApiCall {
       )
       .execute();
 
+      console.log("AD TERMS");
+      try {
+        const valClient = new ValidatorAdClient(
+          {
+            resolveBy: "id",
+            id: valAppId,
+          },
+          algorandClient.client.algod
+        );
+
+        const gs = await valClient.getGlobalState();
+
+        // Add MongoDB creation logic here
+        const termsTime = ValTermsTiming.decodeBytes(gs.t!.asByteArray());
+        const termsPrice = ValTermsPricing.decodeBytes(gs.p!.asByteArray())
+        const termsStake = ValTermsStakeLimits.decodeBytes(gs.s!.asByteArray())
+        const termsReqs = ValTermsGating.decodeBytes(gs.g!.asByteArray());
+        const termsWarn = ValTermsWarnings.decodeBytes(gs.w!.asByteArray());
+        const valInfo = ValSelfDisclosure.decodeBytes(gs.v!.asByteArray());
+        const delAppList = DelAppList.decodeBytes(gs.delAppList!.asByteArray())
+
+        await fetch(`http://localhost:5050/record/${Number(valAppId)}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            "data": {
+              "appId": Number(valAppId),
+              "noticeboardAppId": gs.noticeboardAppId!.asNumber(),
+              "termsTime": {
+                "roundsSetup": Number(termsTime.roundsSetup),
+                "roundsDurationMin": Number(termsTime.roundsDurationMin),
+                "roundsDurationMax": Number(termsTime.roundsDurationMax),
+                "roundsConfirm": Number(termsTime.roundsConfirm),
+                "roundMaxEnd": Number(termsTime.roundMaxEnd)
+              },
+              "termsPrice": {
+                "commission": Number(termsPrice.commission),
+                "feeRoundMin": Number(termsPrice.feeRoundMin),
+                "feeRoundVar": Number(termsPrice.feeRoundVar),
+                "feeSetup": Number(termsPrice.feeSetup),
+                "feeAssetId": Number(termsPrice.feeAssetId)
+              },
+              "termsStake": {
+                "stakeMax": Number(termsStake.stakeMax),
+                "stakeGratis": Number(termsStake.stakeGratis),
+              },
+              "termsReqs": {
+                "gatingAsaList": [termsReqs.gatingAsaList[0].map(Number), termsReqs.gatingAsaList[1].map(Number)]
+              },
+              "termsWarn": {
+                "cntWarningMax": Number(termsWarn.cntWarningMax),
+                "roundsWarning": Number(termsWarn.roundsWarning),
+              },
+
+              "valOwner": new ABIAddressType().decode(gs.valOwner!.asByteArray()),
+              "valManager": new ABIAddressType().decode(gs.valManager!.asByteArray()),
+              "valInfo": {
+                "name": valInfo.name,
+                "https": valInfo.https,
+                "countryCode": valInfo.countryCode,
+                "hwCat": Number(valInfo.hwCat),
+                "nodeVersion": valInfo.nodeVersion,
+              },
+              "state": Buffer.from(gs.state!.asByteArray()).toString("base64"),
+              "cntDel": gs.cntDel!.asNumber(),
+              "cntDelMax": gs.cntDelMax!.asNumber(),
+
+              "delAppList": delAppList.map(Number),
+              "tcSha256": Buffer.from(gs.tcSha256!.asByteArray()).toString("base64"),
+              "totalAlgoEarned": gs.totalAlgoEarned!.asNumber(),
+              "totalAlgoFeesGenerated": gs.totalAlgoFeesGenerated!.asNumber(),
+              "cntAsa": gs.cntAsa!.asNumber(),
+          }}),
+        });
+      }
+      catch(error) {
+        console.error(error);
+      }
+
     return res;
   }
 
@@ -221,6 +389,7 @@ export class ValidatorAdApiCall {
       },
     );
 
+    console.log("ADD CONFIG ALONE");
     return res;
   }
 
@@ -270,6 +439,16 @@ export class ValidatorAdApiCall {
         },
       )
       .execute();
+
+      try {
+        // TODO: CHANGE URL LATER
+        await fetch(`http://localhost:5050/record/${Number(valAppId)}`, {
+          method: "DELETE"
+        });
+      }
+      catch(error) {
+        console.error(error);
+      }
 
     return res;
   }
@@ -531,6 +710,88 @@ export class ValidatorAdApiCall {
       )
       .execute();
 
+      try {
+
+        const valClient = new ValidatorAdClient(
+          {
+            resolveBy: "id",
+            id: valAppId,
+          },
+          algorandClient.client.algod,
+        );
+
+        const gs = await valClient.getGlobalState();
+
+        // Add MongoDB creation logic here
+        const termsTime = ValTermsTiming.decodeBytes(gs.t!.asByteArray());
+        const termsPrice = ValTermsPricing.decodeBytes(gs.p!.asByteArray())
+        const termsStake = ValTermsStakeLimits.decodeBytes(gs.s!.asByteArray())
+        const termsReqs = ValTermsGating.decodeBytes(gs.g!.asByteArray());
+        const termsWarn = ValTermsWarnings.decodeBytes(gs.w!.asByteArray());
+        const valInfo = ValSelfDisclosure.decodeBytes(gs.v!.asByteArray());
+        const delAppList = DelAppList.decodeBytes(gs.delAppList!.asByteArray())
+
+        console.log("APP ID" + String(valAppId));
+
+        await fetch(`http://localhost:5050/record/${Number(valAppId)}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({"data" : {
+            "appId": Number(valAppId),
+            "noticeboardAppId": gs.noticeboardAppId!.asNumber(),
+            "termsTime": {
+              "roundsSetup": Number(termsTime.roundsSetup),
+              "roundsDurationMin": Number(termsTime.roundsDurationMin),
+              "roundsDurationMax": Number(termsTime.roundsDurationMax),
+              "roundsConfirm": Number(termsTime.roundsConfirm),
+              "roundMaxEnd": Number(termsTime.roundMaxEnd)
+            },
+            "termsPrice": {
+              "commission": Number(termsPrice.commission),
+              "feeRoundMin": Number(termsPrice.feeRoundMin),
+              "feeRoundVar": Number(termsPrice.feeRoundVar),
+              "feeSetup": Number(termsPrice.feeSetup),
+              "feeAssetId": Number(termsPrice.feeAssetId)
+            },
+            "termsStake": {
+              "stakeMax": Number(termsStake.stakeMax),
+              "stakeGratis": Number(termsStake.stakeGratis),
+            },
+            "termsReqs": {
+              "gatingAsaList": [termsReqs.gatingAsaList[0].map(Number), termsReqs.gatingAsaList[1].map(Number)]
+            },
+            "termsWarn": {
+              "cntWarningMax": Number(termsWarn.cntWarningMax),
+              "roundsWarning": Number(termsWarn.roundsWarning),
+            },
+
+            "valOwner": new ABIAddressType().decode(gs.valOwner!.asByteArray()),
+            "valManager": new ABIAddressType().decode(gs.valManager!.asByteArray()),
+            "valInfo": {
+              "name": valInfo.name,
+              "https": valInfo.https,
+              "countryCode": valInfo.countryCode,
+              "hwCat": Number(valInfo.hwCat),
+              "nodeVersion": valInfo.nodeVersion,
+            },
+            "state": Buffer.from(gs.state!.asByteArray()).toString("base64"),
+            "cntDel": gs.cntDel!.asNumber(),
+            "cntDelMax": gs.cntDelMax!.asNumber(),
+
+            "delAppList": delAppList.map(Number),
+            "tcSha256": Buffer.from(gs.tcSha256!.asByteArray()).toString("base64"),
+            "totalAlgoEarned": gs.totalAlgoEarned!.asNumber(),
+            "totalAlgoFeesGenerated": gs.totalAlgoFeesGenerated!.asNumber(),
+            "cntAsa": gs.cntAsa!.asNumber(),
+          }}),
+        });
+      }
+      catch(error) {
+        console.error(error);
+      }
+
     return res;
   }
 
@@ -591,6 +852,88 @@ export class ValidatorAdApiCall {
         },
       )
       .execute();
+
+      console.log("APP USER AND CREATE")
+
+      try {
+        const valClient = new ValidatorAdClient(
+          {
+            resolveBy: "id",
+            id: res.returns[1],
+          },
+          algorandClient.client.algod,
+        );
+
+        const gs = await valClient.getGlobalState();
+
+        // Add MongoDB creation logic here
+        const termsTime = ValTermsTiming.decodeBytes(gs.t!.asByteArray());
+        const termsPrice = ValTermsPricing.decodeBytes(gs.p!.asByteArray())
+        const termsStake = ValTermsStakeLimits.decodeBytes(gs.s!.asByteArray())
+        const termsReqs = ValTermsGating.decodeBytes(gs.g!.asByteArray());
+        const termsWarn = ValTermsWarnings.decodeBytes(gs.w!.asByteArray());
+        const valInfo = ValSelfDisclosure.decodeBytes(gs.v!.asByteArray());
+        const delAppList = DelAppList.decodeBytes(gs.delAppList!.asByteArray())
+
+        await fetch("http://localhost:5050/record", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            "appId": Number(res.returns[1]),
+            "noticeboardAppId": gs.noticeboardAppId!.asNumber(),
+            "termsTime": {
+              "roundsSetup": Number(termsTime.roundsSetup),
+              "roundsDurationMin": Number(termsTime.roundsDurationMin),
+              "roundsDurationMax": Number(termsTime.roundsDurationMax),
+              "roundsConfirm": Number(termsTime.roundsConfirm),
+              "roundMaxEnd": Number(termsTime.roundMaxEnd)
+            },
+            "termsPrice": {
+              "commission": Number(termsPrice.commission),
+              "feeRoundMin": Number(termsPrice.feeRoundMin),
+              "feeRoundVar": Number(termsPrice.feeRoundVar),
+              "feeSetup": Number(termsPrice.feeSetup),
+              "feeAssetId": Number(termsPrice.feeAssetId)
+            },
+            "termsStake": {
+              "stakeMax": Number(termsStake.stakeMax),
+              "stakeGratis": Number(termsStake.stakeGratis),
+            },
+            "termsReqs": {
+              "gatingAsaList": [termsReqs.gatingAsaList[0].map(Number), termsReqs.gatingAsaList[1].map(Number)]
+            },
+            "termsWarn": {
+              "cntWarningMax": Number(termsWarn.cntWarningMax),
+              "roundsWarning": Number(termsWarn.roundsWarning),
+            },
+
+            "valOwner": new ABIAddressType().decode(gs.valOwner!.asByteArray()),
+            "valManager": new ABIAddressType().decode(gs.valManager!.asByteArray()),
+            "valInfo": {
+              "name": valInfo.name,
+              "https": valInfo.https,
+              "countryCode": valInfo.countryCode,
+              "hwCat": Number(valInfo.hwCat),
+              "nodeVersion": valInfo.nodeVersion,
+            },
+            "state": Buffer.from(gs.state!.asByteArray()).toString("base64"),
+            "cntDel": gs.cntDel!.asNumber(),
+            "cntDelMax": gs.cntDelMax!.asNumber(),
+
+            "delAppList": delAppList.map(Number),
+            "tcSha256": Buffer.from(gs.tcSha256!.asByteArray()).toString("base64"),
+            "totalAlgoEarned": gs.totalAlgoEarned!.asNumber(),
+            "totalAlgoFeesGenerated": gs.totalAlgoFeesGenerated!.asNumber(),
+            "cntAsa": gs.cntAsa!.asNumber(),
+          }),
+        });
+      }
+      catch(error) {
+        console.log("ERROR Creating")
+        console.error(error);
+      }
 
     return res;
   }

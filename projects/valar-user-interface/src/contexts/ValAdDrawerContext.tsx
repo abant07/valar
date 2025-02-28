@@ -69,14 +69,14 @@ export const ValAdDrawerProvider: React.FC<{
   useEffect(() => {
     const fetch = async () => {
       if (valAppId) {
-        console.log(`Fetching validator ad with ID: ${valAppId}.`);
+        //console.log(`Fetching validator ad with ID: ${valAppId}.`);
 
         try {
           const res = await ValidatorQuery.fetchValidatorAds(algorandClient.client.algod, [valAppId]);
 
           if (res) {
             const gsValAd = res.get(valAppId)!;
-            console.log("Validator Ad ::", gsValAd);
+            //console.log("Validator Ad ::", gsValAd);
             setGsValAd(gsValAd);
 
             const formValues = await ValAdToForm(gsValAd);

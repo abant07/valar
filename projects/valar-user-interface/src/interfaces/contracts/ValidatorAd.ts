@@ -223,38 +223,159 @@ export class ValidatorAdGlobalState implements ValAdGlobalStateInterface {
   // Fetch Global State
   static async getGlobalState(algodClient: AlgodClient, valAppID: bigint): Promise<ValidatorAdGlobalState | undefined> {
     try {
-      const valClient = new ValidatorAdClient(
-        {
-          resolveBy: "id",
-          id: valAppID,
-        },
-        algodClient,
-      );
+      try {
+        // TODO: CHANGE URL
+        const response = await fetch(`http://localhost:5050/record/${Number(valAppID)}`);
+        let record = await response.json();
 
-      const gs = await valClient.getGlobalState();
+        return new ValidatorAdGlobalState({
+          appId: BigInt(record.appId),
+          noticeboardAppId: BigInt(record.noticeboardAppId),
+          termsTime: new ValTermsTiming({
+            roundsSetup: BigInt(record.termsTime.roundsSetup),
+            roundsConfirm: BigInt(record.termsTime.roundsConfirm),
+            roundsDurationMin: BigInt(record.termsTime.roundsDurationMin),
+            roundsDurationMax: BigInt(record.termsTime.roundsDurationMax),
+            roundMaxEnd: BigInt(record.termsTime.roundMaxEnd),
+          }),
+          termsPrice: new ValTermsPricing({
+            commission: BigInt(record.termsPrice.commission),
+            feeRoundMin: BigInt(record.termsPrice.feeRoundMin),
+            feeRoundVar: BigInt(record.termsPrice.feeRoundVar),
+            feeSetup: BigInt(record.termsPrice.feeSetup),
+            feeAssetId: BigInt(record.termsPrice.feeAssetId),
+          }),
+          termsStake: new ValTermsStakeLimits({
+            stakeMax: BigInt(record.termsStake.stakeMax),
+            stakeGratis: BigInt(record.termsStake.stakeGratis),
+          }),
+          termsReqs: new ValTermsGating({
+            gatingAsaList: [record.termsReqs.gatingAsaList[0].map(BigInt), record.termsReqs.gatingAsaList[1].map(BigInt)],
+          }),
+          termsWarn: new ValTermsWarnings({
+            cntWarningMax: BigInt(record.termsWarn.cntWarningMax),
+            roundsWarning: BigInt(record.termsWarn.roundsWarning),
+          }),
 
-      return new ValidatorAdGlobalState({
-        appId: valAppID,
-        noticeboardAppId: gs.noticeboardAppId!.asBigInt(),
-        termsTime: ValTermsTiming.decodeBytes(gs.t!.asByteArray()),
-        termsPrice: ValTermsPricing.decodeBytes(gs.p!.asByteArray()),
-        termsStake: ValTermsStakeLimits.decodeBytes(gs.s!.asByteArray()),
-        termsReqs: ValTermsGating.decodeBytes(gs.g!.asByteArray()),
-        termsWarn: ValTermsWarnings.decodeBytes(gs.w!.asByteArray()),
+          valOwner: record.valOwner,
+          valManager: record.valManager,
+          valInfo: new ValSelfDisclosure({
+            name: record.valInfo.name,
+            https: record.valInfo.https,
+            countryCode: record.valInfo.countryCode,
+            hwCat: BigInt(record.valInfo.hwCat),
+            nodeVersion: record.valInfo.nodeVersion,
+          }),
+          state: Buffer.from(record.state, "base64"),
+          cntDel: record.cntDel,
+          cntDelMax: record.cntDelMax,
 
-        valOwner: new ABIAddressType().decode(gs.valOwner!.asByteArray()),
-        valManager: new ABIAddressType().decode(gs.valManager!.asByteArray()),
-        valInfo: ValSelfDisclosure.decodeBytes(gs.v!.asByteArray()),
-        state: gs.state!.asByteArray(),
-        cntDel: gs.cntDel!.asBigInt(),
-        cntDelMax: gs.cntDelMax!.asBigInt(),
+          delAppList: record.delAppList.map(BigInt),
+          tcSha256: Buffer.from(record.tcSha256, "base64"),
+          totalAlgoEarned: record.totalAlgoEarned,
+          totalAlgoFeesGenerated: record.totalAlgoFeesGenerated,
+          cntAsa: record.cntAsa
+        });
+      }
+      catch(e) {
+        console.error(e)
+        const valClient = new ValidatorAdClient(
+          {
+            resolveBy: "id",
+            id: valAppID,
+          },
+          algodClient,
+        );
 
-        delAppList: DelAppList.decodeBytes(gs.delAppList!.asByteArray()),
-        tcSha256: gs.tcSha256!.asByteArray(),
-        totalAlgoEarned: gs.totalAlgoEarned!.asBigInt(),
-        totalAlgoFeesGenerated: gs.totalAlgoFeesGenerated!.asBigInt(),
-        cntAsa: gs.cntAsa!.asBigInt(),
-      });
+        const gs = await valClient.getGlobalState();
+
+        // Add MongoDB creation logic here
+        const termsTime = ValTermsTiming.decodeBytes(gs.t!.asByteArray());
+        const termsPrice = ValTermsPricing.decodeBytes(gs.p!.asByteArray())
+        const termsStake = ValTermsStakeLimits.decodeBytes(gs.s!.asByteArray())
+        const termsReqs = ValTermsGating.decodeBytes(gs.g!.asByteArray());
+        const termsWarn = ValTermsWarnings.decodeBytes(gs.w!.asByteArray());
+        const valInfo = ValSelfDisclosure.decodeBytes(gs.v!.asByteArray());
+        const delAppList = DelAppList.decodeBytes(gs.delAppList!.asByteArray())
+
+        await fetch("http://localhost:5050/record", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            "appId": Number(valAppID),
+            "noticeboardAppId": gs.noticeboardAppId!.asNumber(),
+            "termsTime": {
+              "roundsSetup": Number(termsTime.roundsSetup),
+              "roundsDurationMin": Number(termsTime.roundsDurationMin),
+              "roundsDurationMax": Number(termsTime.roundsDurationMax),
+              "roundsConfirm": Number(termsTime.roundsConfirm),
+              "roundMaxEnd": Number(termsTime.roundMaxEnd)
+            },
+            "termsPrice": {
+              "commission": Number(termsPrice.commission),
+              "feeRoundMin": Number(termsPrice.feeRoundMin),
+              "feeRoundVar": Number(termsPrice.feeRoundVar),
+              "feeSetup": Number(termsPrice.feeSetup),
+              "feeAssetId": Number(termsPrice.feeAssetId)
+            },
+            "termsStake": {
+              "stakeMax": Number(termsStake.stakeMax),
+              "stakeGratis": Number(termsStake.stakeGratis),
+            },
+            "termsReqs": {
+              "gatingAsaList": [termsReqs.gatingAsaList[0].map(Number), termsReqs.gatingAsaList[1].map(Number)]
+            },
+            "termsWarn": {
+              "cntWarningMax": Number(termsWarn.cntWarningMax),
+              "roundsWarning": Number(termsWarn.roundsWarning),
+            },
+
+            "valOwner": new ABIAddressType().decode(gs.valOwner!.asByteArray()),
+            "valManager": new ABIAddressType().decode(gs.valManager!.asByteArray()),
+            "valInfo": {
+              "name": valInfo.name,
+              "https": valInfo.https,
+              "countryCode": valInfo.countryCode,
+              "hwCat": Number(valInfo.hwCat),
+              "nodeVersion": valInfo.nodeVersion,
+            },
+            "state": Buffer.from(gs.state!.asByteArray()).toString("base64"),
+            "cntDel": gs.cntDel!.asNumber(),
+            "cntDelMax": gs.cntDelMax!.asNumber(),
+
+            "delAppList": delAppList.map(Number),
+            "tcSha256": Buffer.from(gs.tcSha256!.asByteArray()).toString("base64"),
+            "totalAlgoEarned": gs.totalAlgoEarned!.asNumber(),
+            "totalAlgoFeesGenerated": gs.totalAlgoFeesGenerated!.asNumber(),
+            "cntAsa": gs.cntAsa!.asNumber(),
+          }),
+        });
+
+        return new ValidatorAdGlobalState({
+          appId: valAppID,
+          noticeboardAppId: gs.noticeboardAppId!.asBigInt(),
+          termsTime: ValTermsTiming.decodeBytes(gs.t!.asByteArray()),
+          termsPrice: ValTermsPricing.decodeBytes(gs.p!.asByteArray()),
+          termsStake: ValTermsStakeLimits.decodeBytes(gs.s!.asByteArray()),
+          termsReqs: ValTermsGating.decodeBytes(gs.g!.asByteArray()),
+          termsWarn: ValTermsWarnings.decodeBytes(gs.w!.asByteArray()),
+
+          valOwner: new ABIAddressType().decode(gs.valOwner!.asByteArray()),
+          valManager: new ABIAddressType().decode(gs.valManager!.asByteArray()),
+          valInfo: ValSelfDisclosure.decodeBytes(gs.v!.asByteArray()),
+          state: gs.state!.asByteArray(),
+          cntDel: gs.cntDel!.asBigInt(),
+          cntDelMax: gs.cntDelMax!.asBigInt(),
+
+          delAppList: DelAppList.decodeBytes(gs.delAppList!.asByteArray()),
+          tcSha256: gs.tcSha256!.asByteArray(),
+          totalAlgoEarned: gs.totalAlgoEarned!.asBigInt(),
+          totalAlgoFeesGenerated: gs.totalAlgoFeesGenerated!.asBigInt(),
+          cntAsa: gs.cntAsa!.asBigInt()
+        });
+      }
     } catch (err) {
       console.log(err);
       return undefined;
